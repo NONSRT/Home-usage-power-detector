@@ -1,26 +1,36 @@
 #include <Arduino.h>
 #include <DHT.h>
 #include <Adafruit_Sensor.h>
+#include "EmonLib.h"
 
 #define DHTPIN 16 // Digital pin connected to the DHT sensor
 #define DHTTYPE DHT22 // DHT 22 (AM2302), AM2321
 DHT dht(DHTPIN, DHTTYPE);
-int analogPin = 4, light = 0;
+int analogPin = 4, light = 0, lightTemp;
 
-void lightTask(void *parameters){
+#define LIGHT_SWITCH GPIO_NUM_5 //Pin 5 for input button
+int state = 0;
+
+SemaphoreHandle_t  xSemaphore, xMutex;
+
+int LtaskPrio = 1, TtaskPrio = 1;
+
+EnergyMonitor emon1;
+EnergyMonitor emon2;
+
+void lightTask(void *param){
   while(1){
   light = analogRead(analogPin);
   Serial.println(light);
   String lightStatus = (light < 3000) ? "Light is on" : "Light is off";
   Serial.println(lightStatus);
+
   vTaskDelay(pdMS_TO_TICKS(5000));
   }
 }
 
-void TempTask(void *parameters){
+void TempTask(void *param){
   while(1){
-    // Wait a few seconds between measurements.
-  delay(2000);
   
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
@@ -52,18 +62,39 @@ void TempTask(void *parameters){
   Serial.print(F(" C "));
   Serial.print(hif);
   Serial.println(F(" F"));
+
   vTaskDelay(pdMS_TO_TICKS(60000));
+  }
+}
+
+void Power(void *param){
+  while(1){
+    double Irms = emon1.calcIrms(1480);  // Calculate Irms only
+    Serial.print(Irms*230.0);	       // Apparent power
+    Serial.print(" ");
+    Serial.println(Irms);		       // Irms
+  
+    double Irmss = emon2.calcIrms(1480);  // Calculate Irms only
+    Serial.print(Irmss*230.0);	       // Apparent power
+    Serial.print(" ");
+    Serial.println(Irmss);		       // Irms
+
+    vTaskDelay(pdMS_TO_TICKS(5000));
   }
 }
 
 void setup(){
 Serial.begin(9600);
-
 pinMode(analogPin, INPUT);
-xTaskCreate(lightTask, "lightTask", 2048, NULL, 1, NULL); 
-xTaskCreate(TempTask, "TempTask", 2048, NULL, 1, NULL);
+emon1.current(13, 111.1);
+emon2.current(12, 111.1);
 dht.begin();
+xTaskCreate(lightTask, "lightTask", 2048, NULL, LtaskPrio, NULL); 
+xTaskCreate(TempTask, "TempTask", 2048, NULL, TtaskPrio, NULL);
+xTaskCreate(Power, "Power", 2048, NULL, TtaskPrio, NULL);
 }
+
+
 
 void loop(){
 
