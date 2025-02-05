@@ -10,10 +10,8 @@ int analogPin = 4, light = 0, lightTemp;
 
 #define LIGHT_SWITCH GPIO_NUM_5 //Pin 5 for input button
 int state = 0;
-
-SemaphoreHandle_t  xSemaphore, xMutex;
-
-int LtaskPrio = 1, TtaskPrio = 1;
+int LtaskPrio = 1, TtaskPrio = 1, count = 0;
+double lightUnit, powerFlee, lightPower = 46, lightCheckDelay = 45000;
 
 EnergyMonitor emon1;
 EnergyMonitor emon2;
@@ -22,10 +20,23 @@ void lightTask(void *param){
   while(1){
   light = analogRead(analogPin);
   Serial.println(light);
-  String lightStatus = (light < 3000) ? "Light is on" : "Light is off";
-  Serial.println(lightStatus);
+  if(light < 3300){
+    Serial.println("Light is on");
+    if(count > 0){
+    
+    lightUnit  += lightPower*(lightCheckDelay/3600000)/1000;
+    powerFlee = lightUnit * 3.96;
+    }
+    Serial.printf("%.4f\n",lightUnit);
+    Serial.printf("%.4f\n",powerFlee);
+    count++;
+  }
+  else{
+    Serial.println("Light is off");
+    count = 0;
+  }
 
-  vTaskDelay(pdMS_TO_TICKS(5000));
+  vTaskDelay(pdMS_TO_TICKS(lightCheckDelay));
   }
 }
 
