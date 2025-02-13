@@ -2,26 +2,37 @@
 #include <DHT.h>
 #include <Adafruit_Sensor.h>
 #include "EmonLib.h"
+#include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+#include "index.h"
 
 #define DHTPIN 16 // Digital pin connected to the DHT sensor
 #define DHTTYPE DHT22 // DHT 22 (AM2302), AM2321
 DHT dht(DHTPIN, DHTTYPE);
-int analogPin = 4, light = 0, lightTemp;
+int analogPin = 34, light = 0, lightTemp;
 
-#define LIGHT_SWITCH GPIO_NUM_5 //Pin 5 for input button
 int state = 0;
+
 int LtaskPrio = 1, TtaskPrio = 1, count = 0;
 double lightUnit, powerFlee, lightPower = 46, lightCheckDelay = 45000;
+String lightStatus;
+
+float h, t, f;
 
 EnergyMonitor emon1;
 EnergyMonitor emon2;
+
+const char* WIFI_NAME = "Homewifi_2.4G";
+const char* WIFI_PASSWORD = "No0955653261";
+AsyncWebServer server(80);
 
 void lightTask(void *param){
   while(1){
   light = analogRead(analogPin);
   Serial.println(light);
   if(light < 3300){
-    Serial.println("Light is on");
+    lightStatus = "Light is on";
+    Serial.println(lightStatus);
     if(count > 0){
     
     lightUnit  += lightPower*(lightCheckDelay/3600000)/1000;
@@ -32,7 +43,8 @@ void lightTask(void *param){
     count++;
   }
   else{
-    Serial.println("Light is off");
+    lightStatus = "Light is off";
+    Serial.println(lightStatus);
     count = 0;
   }
 
@@ -45,11 +57,11 @@ void TempTask(void *param){
   
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-  float h = dht.readHumidity();
+  h = dht.readHumidity();
   // Read temperature as Celsius (the default)
-  float t = dht.readTemperature();
+  t = dht.readTemperature();
   // Read temperature as Fahrenheit (isFahrenheit = true)
-  float f = dht.readTemperature(true);
+  f = dht.readTemperature(true);
   
   // Check if any reads failed and exit early (to try again).
   if (isnan(h) || isnan(t) || isnan(f)) {
@@ -62,7 +74,7 @@ void TempTask(void *param){
   // Compute heat index in Celsius (isFahreheit = false)
   float hic = dht.computeHeatIndex(t, h, false);
   
-  Serial.print(F("Humidity: "));
+  Serial.print(F("\t\t\tHumidity: "));
   Serial.print(h);
   Serial.print(F("% Temperature: "));
   Serial.print(t);
@@ -78,13 +90,14 @@ void TempTask(void *param){
   }
 }
 
+
 void Power(void *param){
   while(1){
     double Irms = emon1.calcIrms(1480);  // Calculate Irms only
     Serial.print(Irms*230.0);	       // Apparent power
     Serial.print(" ");
     Serial.println(Irms);		       // Irms
-  
+
     double Irmss = emon2.calcIrms(1480);  // Calculate Irms only
     Serial.print(Irmss*230.0);	       // Apparent power
     Serial.print(" ");
@@ -94,12 +107,59 @@ void Power(void *param){
   }
 }
 
+
 void setup(){
 Serial.begin(9600);
 pinMode(analogPin, INPUT);
 emon1.current(13, 111.1);
 emon2.current(12, 111.1);
 dht.begin();
+
+// Connect to Wi-Fi
+WiFi.begin(WIFI_NAME, WIFI_PASSWORD);
+while (WiFi.status() != WL_CONNECTED) {
+  delay(1000);
+  Serial.println("Connecting to WiFi...");
+}
+Serial.println("Connected to WiFi");
+
+// Print the ESP32's IP address
+Serial.print("ESP32 Web Server's IP address: ");
+Serial.println(WiFi.localIP());
+
+// Serve the HTML page from the file
+server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
+  Serial.println("ESP32 Web Server: New request received:");  // for debugging
+  Serial.println("GET /");                                    // for debugging
+
+  request->send(200, "text/html", webpage);
+});
+
+// Define a route to get the light data
+server.on("/light", HTTP_GET, [](AsyncWebServerRequest* request) {
+  Serial.println("ESP32 Web Server: New request received:");  // for debugging
+  Serial.println("GET /light");                         // for debugging
+  request->send(200, "text/plain", lightStatus);
+});
+
+server.on("/lightFlee", HTTP_GET, [](AsyncWebServerRequest* request) {
+  Serial.println("ESP32 Web Server: New request received:");  // for debugging
+  Serial.println("GET /lightFlee");                         // for debugging
+  String lightFlee = String(powerFlee);
+  request->send(200, "text/plain", lightFlee);
+});
+
+server.on("/temperature", HTTP_GET, [](AsyncWebServerRequest* request) {
+  Serial.println("ESP32 Web Server: New request received:");  // for debugging
+  Serial.println("GET /temperature");                         // for debugging
+  float temperature = t;
+  String temperatureStr = String(temperature, 2);
+  request->send(200, "text/plain", temperatureStr);
+});
+
+// Start the server
+server.begin();
+
 xTaskCreate(lightTask, "lightTask", 2048, NULL, LtaskPrio, NULL); 
 xTaskCreate(TempTask, "TempTask", 2048, NULL, TtaskPrio, NULL);
 xTaskCreate(Power, "Power", 2048, NULL, TtaskPrio, NULL);
@@ -108,5 +168,5 @@ xTaskCreate(Power, "Power", 2048, NULL, TtaskPrio, NULL);
 
 
 void loop(){
-
+  
 }
