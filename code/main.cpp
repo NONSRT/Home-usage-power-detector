@@ -13,14 +13,19 @@ int analogPin = 34, light = 0, lightTemp;
 
 int state = 0;
 
-int LtaskPrio = 1, TtaskPrio = 1, count = 0;
-double lightUnit, powerFlee, lightPower = 46, lightCheckDelay = 45000;
+int LtaskPrio = 1, TtaskPrio = 1, lightCount = 0, airCount = 0;
+double lightUnit, powerFlee, lightPower = 46, lightCheckDelay = 22500;
+double airUnit, airFlee, airPower = 782.81, airCheckDelay = 22500;
 String lightStatus;
 
 float h, t, f;
 
 EnergyMonitor emon1;
 EnergyMonitor emon2;
+
+String sliderValue = "OFF";
+
+const char* PARAM_INPUT = "value";
 
 const char* WIFI_NAME = "Homewifi_2.4G";
 const char* WIFI_PASSWORD = "No0955653261";
@@ -33,19 +38,19 @@ void lightTask(void *param){
   if(light < 3300){
     lightStatus = "Light is on";
     Serial.println(lightStatus);
-    if(count > 0){
+    if(lightCount > 0){
     
     lightUnit  += lightPower*(lightCheckDelay/3600000)/1000;
     powerFlee = lightUnit * 3.96;
     }
     Serial.printf("%.4f\n",lightUnit);
     Serial.printf("%.4f\n",powerFlee);
-    count++;
+    lightCount++;
   }
   else{
     lightStatus = "Light is off";
     Serial.println(lightStatus);
-    count = 0;
+    lightCount = 0;
   }
 
   vTaskDelay(pdMS_TO_TICKS(lightCheckDelay));
@@ -86,7 +91,22 @@ void TempTask(void *param){
   Serial.print(hif);
   Serial.println(F(" F"));
 
-  vTaskDelay(pdMS_TO_TICKS(60000));
+  if(sliderValue == "ON"){
+    Serial.printf("air is %s", sliderValue);
+    if(airCount > 0){
+      airUnit  += airPower*(airCheckDelay/3600000)/1000;
+      airFlee = airUnit * 3.96;
+    }
+    Serial.printf("AU:%.4f\n",airUnit);
+    Serial.printf("AF:%.4f\n",airFlee);
+    airCount++;
+  }
+  else if(sliderValue == "OFF"){
+    Serial.printf("air is %s", sliderValue);
+    airCount = 0;
+  }
+
+  vTaskDelay(pdMS_TO_TICKS(22500));
   }
 }
 
@@ -145,7 +165,7 @@ server.on("/light", HTTP_GET, [](AsyncWebServerRequest* request) {
 server.on("/lightFlee", HTTP_GET, [](AsyncWebServerRequest* request) {
   Serial.println("ESP32 Web Server: New request received:");  // for debugging
   Serial.println("GET /lightFlee");                         // for debugging
-  String lightFlee = String(powerFlee);
+  String lightFlee = String(powerFlee, 4);
   request->send(200, "text/plain", lightFlee);
 });
 
@@ -157,6 +177,34 @@ server.on("/temperature", HTTP_GET, [](AsyncWebServerRequest* request) {
   request->send(200, "text/plain", temperatureStr);
 });
 
+server.on("/airStatus", HTTP_GET, [](AsyncWebServerRequest* request) {
+  Serial.println("ESP32 Web Server: New request received:");  // for debugging
+  Serial.println("GET /airStatus");                         // for debugging
+  request->send(200, "text/plain", sliderValue);
+});
+
+server.on("/airFlee", HTTP_GET, [](AsyncWebServerRequest* request) {
+  Serial.println("ESP32 Web Server: New request received:");  // for debugging
+  Serial.println("GET /airFlee");                         // for debugging
+  float af = airFlee;
+  String AirFlee = String(af, 4);
+  request->send(200, "text/plain", AirFlee);
+});
+
+server.on("/slider", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    String inputMessage;
+    // GET input1 value on <ESP_IP>/slider?value=<inputMessage>
+    if (request->hasParam(PARAM_INPUT)) {
+      inputMessage = request->getParam(PARAM_INPUT)->value();
+      sliderValue = inputMessage;
+    }
+    else {
+      inputMessage = "No message sent";
+    }
+    Serial.println(inputMessage);
+    request->send(200, "text/plain", "OK");
+  });
+
 // Start the server
 server.begin();
 
@@ -164,8 +212,6 @@ xTaskCreate(lightTask, "lightTask", 2048, NULL, LtaskPrio, NULL);
 xTaskCreate(TempTask, "TempTask", 2048, NULL, TtaskPrio, NULL);
 xTaskCreate(Power, "Power", 2048, NULL, TtaskPrio, NULL);
 }
-
-
 
 void loop(){
   
