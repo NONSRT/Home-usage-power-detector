@@ -70,14 +70,34 @@ const char* webpage = R"=====(
 </head>
 <body>
     <h1>ESP32</h1>
+    <h2>Your room is now <span style="color: red;"><span id="light">Loading...</span></span></h2>
     <h2>
-        Light Status: <span style="color: red;"><span id="light">Loading...</span></span> 
+        Light switch is turn <span style="color: red;"><span id="LightSwitchStatus">Loading...</span></span>
         <label class="switch">
-            <input type="checkbox">
+            <input type="checkbox" id="LightSwitchCheck" onclick="LightSwitch()">
             <span class="slider round"></span>
         </label>
     </h2>
-    <h2>Current Power Flee: <span style="color: red;"><span id="lightFlee">Loading...</span></span>THB</h2>
+    <h2>
+        Current Power Flee: <span style="color: red;"><span id="lightFlee">Loading...</span></span>THB
+    </h2>
+
+    <h2>
+        Temperature: <span style="color: red;"><span id="temperature">Loading...</span>&deg</span> 
+        Heat Index: <span style="color: red;"><span id="heatIndex">Loading...</span>&deg</span>
+    </h2>
+    <h2>Your room is <span style="color: red;"><span id="heatStatus">Loading...</span></span>
+    <h2> 
+        Air conditioner is <span style="color: red;"><span id="airStatus">Loading...</span></span>
+        <label class="switch">
+            <input type="checkbox" id="AirSwitchCheck" onclick="AirconSwitch()">
+            <span class="slider round"></span>
+        </label>
+    </h2>
+    <h2>
+        Air Flee: <span style="color: red;"><span id="airFlee">Loading...</span></span>THB
+    </h2>
+
     <script>
         function lightMonitor() {
             fetch("/light")
@@ -91,31 +111,51 @@ const char* webpage = R"=====(
                 .then(data => {
                     document.getElementById("lightFlee").textContent = data;
                 });
+
+            fetch("/LightSwitchStatus")
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById("LightSwitchStatus").textContent = data;
+                });
         }
 
         lightMonitor();
         setInterval(lightMonitor, 22600); // Update temperature every 4 seconds
-    </script>
 
-    <h2>
-        Temperature: <span style="color: red;"><span id="temperature">Loading...</span></span>
-    </h2>
-    <h2> 
-        Air conditioner is <span style="color: red;"><span id="airStatus">Loading...</span></span>
-        <label class="switch">
-            <input type="checkbox" id="myCheck" onclick="AirconSwitch()">
-            <span class="slider round"></span>
-        </label>
-    </h2>
-    <h2>
-        Air Flee: <span style="color: red;"><span id="airFlee">Loading...</span></span>
-    </h2>
-    <script>
+        function LightSwitch() {
+            var LightCheckBox = document.getElementById("LightSwitchCheck");
+            var Lightxhr = new XMLHttpRequest();
+            if (LightCheckBox.checked == true){
+                Lightxhr.open("GET", "/lightSlider?value=ON", true);
+            } else {
+                Lightxhr.open("GET", "/lightSlider?value=OFF", true);
+            }
+            Lightxhr.send();
+
+            fetch("/LightSwitchStatus")
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById("LightSwitchStatus").textContent = data;
+                });
+        }
+
         function temperature() {
             fetch("/temperature")
                 .then(response => response.text())
                 .then(data => {
                     document.getElementById("temperature").textContent = data;
+                });
+            
+            fetch("/heatIndex")
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById("heatIndex").textContent = data;
+                });
+
+            fetch("/heatStatus")
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById("heatStatus").textContent = data;
                 });
 
             fetch("/airFlee")
@@ -135,14 +175,14 @@ const char* webpage = R"=====(
         setInterval(temperature, 22600); // Update temperature every 4 seconds
 
         function AirconSwitch() {
-            var AirCheckBox = document.getElementById("myCheck");
-            var xhr = new XMLHttpRequest();
+            var AirCheckBox = document.getElementById("AirSwitchCheck");
+            var Airxhr = new XMLHttpRequest();
             if (AirCheckBox.checked == true){
-                xhr.open("GET", "/slider?value=ON", true);
+                Airxhr.open("GET", "/airSlider?value=ON", true);
             } else {
-                xhr.open("GET", "/slider?value=OFF", true);
+                Airxhr.open("GET", "/airSlider?value=OFF", true);
             }
-            xhr.send();
+            Airxhr.send();
 
             fetch("/airStatus")
                 .then(response => response.text())
