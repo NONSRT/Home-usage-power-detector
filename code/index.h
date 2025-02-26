@@ -98,6 +98,10 @@ const char* webpage = R"=====(
         Air Flee: <span style="color: red;"><span id="airFlee">Loading...</span></span>THB
     </h2>
 
+    <h2>Power usage Flee: <span style="color: red;"><span id="CTPowerFlee">Loading...</span></span>THB</h2>
+
+    <h2>Power Flee/Hour: <span style="color: red;"><span id="PowerFleePerHr">Loading...</span></span>THB</h2>
+
     <script>
         function lightMonitor() {
             fetch("/light")
@@ -190,6 +194,28 @@ const char* webpage = R"=====(
                     document.getElementById("airStatus").textContent = data;
                 });
         }
+
+        function CTPower() {
+            fetch("/CTPowerFlee")
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById("CTPowerFlee").textContent = data;
+                });
+        }
+
+        CTPower();
+        setInterval(CTPower, 22600); // Update temperature every 4 seconds
+
+        function PowFleePerHr() {
+            fetch("/PowerFleePerHr")
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById("PowerFleePerHr").textContent = data;
+                });
+        }
+
+        PowFleePerHr();
+        setInterval(PowFleePerHr, 22600); // Update temperature every 4 seconds
     </script>
 </body>
 </html>

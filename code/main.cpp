@@ -13,9 +13,11 @@ int analogPin = 34, light = 0, lightTemp;
 
 int state = 0;
 
-int LtaskPrio = 1, TtaskPrio = 1, lightCount = 0, airCount = 0;
+int LtaskPrio = 1, TtaskPrio = 1, lightCount = 0, airCount = 0, ctpowerCount = 0;
 float lightUnit, powerFlee, lightPower = 46, CheckDelay = 22500;
 float airUnit, usageUnit, airFlee, airPower = 782.81;
+float CTPower, CTPowerUnit, CTPowerFlee;
+float PowFleePerHr, PowFleePerHr_Temp;
 String lightStatus, heatStatus;
 
 float h, t, hic;
@@ -129,7 +131,7 @@ void TempTask(void *param){
 }
 
 
-void Power(void *param){
+void Power(void *parameter){
   while(1){
     double Irms = emon1.calcIrms(1480);  // Calculate Irms only
     Serial.print(Irms*230.0);	       // Apparent power
@@ -141,16 +143,36 @@ void Power(void *param){
     Serial.print(" ");
     Serial.println(Irmss);		       // Irms
 
+    CTPower = (Irms + Irmss)*230;
+
+    if(ctpowerCount > 3){
+      CTPowerUnit += UnitCalculate(CTPower);
+      CTPowerFlee = CTPowerUnit * 3.96;
+    }
+    Serial.printf("PU:%.4f\n",CTPowerUnit);
+    Serial.printf("PF:%.4f\n",CTPowerFlee);
+    ctpowerCount++;
+
+    Serial.println(uxTaskGetStackHighWaterMark(NULL));
     vTaskDelay(pdMS_TO_TICKS(CheckDelay));
   }
 }
 
+void PowPerHr(void *param){
+  while(1){
+    if(ctpowerCount % 161 == 0){
+      PowFleePerHr = powerFlee + airFlee + CTPowerFlee;
+      PowFleePerHr_Temp += PowFleePerHr;
+    }
+    vTaskDelay(pdMS_TO_TICKS(CheckDelay));
+  }
+}
 
 void setup(){
 Serial.begin(9600);
 pinMode(analogPin, INPUT);
-emon1.current(13, 111.1);
-emon2.current(12, 111.1);
+emon1.current(35, 111.1);
+emon2.current(39, 111.1);
 dht.begin();
 
 // Connect to Wi-Fi
@@ -228,6 +250,21 @@ server.on("/airFlee", HTTP_GET, [](AsyncWebServerRequest* request) {
   request->send(200, "text/plain", AirFlee);
 });
 
+server.on("/CTPowerFlee", HTTP_GET, [](AsyncWebServerRequest* request) {
+  Serial.println("ESP32 Web Server: New request received:");  // for debugging
+  Serial.println("GET /CTPowerFlee");                         // for debugging
+  float CTPF = CTPowerFlee;
+  String CTPFlee = String(CTPF, 4);
+  request->send(200, "text/plain", CTPFlee);
+});
+
+server.on("/PowerFleePerHr", HTTP_GET, [](AsyncWebServerRequest* request) {
+  Serial.println("ESP32 Web Server: New request received:");  // for debugging
+  Serial.println("GET /PowerFleePerHr");                         // for debugging
+  String PFleePerHr = String(PowFleePerHr, 4);
+  request->send(200, "text/plain", PFleePerHr);
+});
+
 server.on("/airSlider", HTTP_GET, [] (AsyncWebServerRequest *request) {
     String AirInputMessage;
     // GET input1 value on <ESP_IP>/slider?value=<inputMessage>
@@ -261,7 +298,9 @@ server.begin();
 
 xTaskCreate(lightTask, "lightTask", 2048, NULL, LtaskPrio, NULL); 
 xTaskCreate(TempTask, "TempTask", 4096, NULL, TtaskPrio, NULL);
-xTaskCreate(Power, "Power", 2048, NULL, TtaskPrio, NULL);
+xTaskCreate(Power, "Power", 8192, NULL, TtaskPrio, NULL);
+xTaskCreate(PowPerHr, "PowPerHr", 2048, NULL, LtaskPrio, NULL);
+
 }
 
 void loop(){
