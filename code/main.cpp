@@ -10,14 +10,15 @@
 #define DHTTYPE DHT22 // DHT 22 (AM2302), AM2321
 DHT dht(DHTPIN, DHTTYPE);
 int analogPin = 34, light = 0, lightTemp;
+SemaphoreHandle_t xMutex;
 
 int state = 0;
 
-int LtaskPrio = 1, TtaskPrio = 1, lightCount = 0, airCount = 0, ctpowerCount = 0;
+int LtaskPrio = 1, TtaskPrio = 1, lightCount = 0, airCount = 0, ctpowerCount = 0, PowFleeHrCount = 0;
 float lightUnit, powerFlee, lightPower = 46, CheckDelay = 22500;
 float airUnit, usageUnit, airFlee, airPower = 782.81;
 float CTPower, CTPowerUnit, CTPowerFlee;
-float PowFleePerHr, PowFleePerHr_Temp;
+float PowFleePerHr, PowFleePerHr_Temp, PowFleePerDay;
 String lightStatus, heatStatus;
 
 float h, t, hic;
@@ -41,98 +42,107 @@ float UnitCalculate(float power){
 
 void lightTask(void *param){
   while(1){
-  light = analogRead(analogPin);
-  Serial.println(light);
-  if(light < 3500){
-    lightStatus = "Bright!";
-    Serial.println(lightStatus);
-  }
-  else{
-    lightStatus = "Dark! turn on the light?";
-    Serial.println(lightStatus);
-  }
-
-  if(lightSliderValue == "ON"){
-    Serial.printf("\n\t\tlight is %s", lightSliderValue);
-    if(lightCount > 0){
-      lightUnit += UnitCalculate(lightPower);
-      powerFlee = lightUnit * 3.96;
+    xSemaphoreTake( xMutex,portMAX_DELAY);
+    light = analogRead(analogPin);
+    Serial.println(light);
+    if(light < 3800){
+      lightStatus = "Bright!";
+      Serial.println(lightStatus);
     }
-    Serial.printf("%.4f\n",lightUnit);
-    Serial.printf("%.4f\n",powerFlee);
-    lightCount++;
-  }
-  else if(lightSliderValue == "OFF"){
-    Serial.printf("\n\t\tlight is %s", lightSliderValue);
-    lightCount = 0;
-  }
+    else{
+      if(lightSliderValue == "OFF")
+      lightStatus = "Dark! turn on the light?";
+      Serial.println(lightStatus);
+    }
 
-  vTaskDelay(pdMS_TO_TICKS(CheckDelay));
+    if(lightSliderValue == "ON"){
+      Serial.printf("\n\t\tlight is %s", lightSliderValue);
+      if(lightCount > 0){
+        lightUnit += UnitCalculate(lightPower);
+        powerFlee = lightUnit * 3.96;
+      }
+      Serial.printf("%.4f\n",lightUnit);
+      Serial.printf("%.4f\n",powerFlee);
+      lightCount++;
+    }
+    else if(lightSliderValue == "OFF"){
+      Serial.printf("\n\t\tlight is %s\n", lightSliderValue);
+      lightCount = 0;
+    }
+
+    xSemaphoreGive( xMutex ); //release key(xMutex)
+    vTaskDelay(pdMS_TO_TICKS(CheckDelay));
   }
 }
 
 void TempTask(void *param){
   while(1){
-  
-  // Reading temperature or humidity takes about 250 milliseconds!
-  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-  h = dht.readHumidity();
-  // Read temperature as Celsius (the default)
-  t = dht.readTemperature();
-  
-  // Check if any reads failed and exit early (to try again).
-  if (isnan(h) || isnan(t)) {
-  Serial.println(F("Failed to read from DHT sensor!"));
-  return;
-  }
-  
-  // Compute heat index in Celsius (isFahreheit = false)
-  hic = dht.computeHeatIndex(t, h, false);
-  
-  Serial.print(F("\t\t\tHumidity: "));
-  Serial.print(h);
-  Serial.print(F("% Temperature: "));
-  Serial.print(t);
-  Serial.print(F(" C "));
-  Serial.print(F(" Heat index: "));
-  Serial.print(hic);
-  Serial.print(F(" C "));
-
-  if(hic >= 35){
-    heatStatus = "so HOT! turn on the cooler?";
-    Serial.println(heatStatus);
-  }
-  else if(hic < 17){
-    heatStatus = "so COLD! turn off the cooler?";
-    Serial.println(heatStatus);
-  }
-  else{
-    heatStatus = "COOL!";
-    Serial.println(heatStatus);
-  }
-
-  if(airSliderValue == "ON"){
-    Serial.printf("\n\t\tair is %s", airSliderValue);
-    if(airCount > 0){
-      airUnit += UnitCalculate(airPower);
-      airFlee = airUnit * 3.96;
+    xSemaphoreTake( xMutex,portMAX_DELAY);
+    // Reading temperature or humidity takes about 250 milliseconds!
+    // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+    h = dht.readHumidity();
+    // Read temperature as Celsius (the default)
+    t = dht.readTemperature();
+    
+    // Check if any reads failed and exit early (to try again).
+    if (isnan(h) || isnan(t)) {
+    Serial.println(F("Failed to read from DHT sensor!"));
+    return;
     }
-    Serial.printf("AU:%.4f\n",airUnit);
-    Serial.printf("AF:%.4f\n",airFlee);
-    airCount++;
-  }
-  else if(airSliderValue == "OFF"){
-    Serial.printf("\n\t\tair is %s", airSliderValue);
-    airCount = 0;
-  }
+    
+    // Compute heat index in Celsius (isFahreheit = false)
+    hic = dht.computeHeatIndex(t, h, false);
+    
+    Serial.print(F("\t\t\tHumidity: "));
+    Serial.print(h);
+    Serial.print(F("% Temperature: "));
+    Serial.print(t);
+    Serial.print(F(" C "));
+    Serial.print(F(" Heat index: "));
+    Serial.print(hic);
+    Serial.print(F(" C "));
 
-  vTaskDelay(pdMS_TO_TICKS(CheckDelay));
+    if(hic >= 32){
+      if(airSliderValue == "OFF")
+      heatStatus = "so HOT! turn on the cooler?";
+      else heatStatus = " ";
+      Serial.println(heatStatus);
+    }
+    else if(hic < 17){
+      if(airSliderValue == "ON")
+      heatStatus = "so COLD! turn off the cooler?";
+      else heatStatus = " ";
+      Serial.println(heatStatus);
+    }
+    else{
+      heatStatus = "COOL!";
+      Serial.println(heatStatus);
+    }
+
+    if(airSliderValue == "ON"){
+      Serial.printf("\n\t\tair is %s", airSliderValue);
+      if(airCount > 0){
+        airUnit += UnitCalculate(airPower);
+        airFlee = airUnit * 3.96;
+      }
+      Serial.printf("AU:%.4f\n",airUnit);
+      Serial.printf("AF:%.4f\n",airFlee);
+      airCount++;
+    }
+    else if(airSliderValue == "OFF"){
+      Serial.printf("\n\t\tair is %s\n", airSliderValue);
+      airCount = 0;
+    }
+
+    xSemaphoreGive( xMutex ); //release key(xMutex)
+    vTaskDelay(pdMS_TO_TICKS(CheckDelay));
   }
 }
 
 
 void Power(void *parameter){
   while(1){
+    xSemaphoreTake( xMutex,portMAX_DELAY);
     double Irms = emon1.calcIrms(1480);  // Calculate Irms only
     Serial.print(Irms*230.0);	       // Apparent power
     Serial.print(" ");
@@ -154,16 +164,23 @@ void Power(void *parameter){
     ctpowerCount++;
 
     Serial.println(uxTaskGetStackHighWaterMark(NULL));
+    xSemaphoreGive( xMutex ); //release key(xMutex)
     vTaskDelay(pdMS_TO_TICKS(CheckDelay));
   }
 }
 
-void PowPerHr(void *param){
+void PowSum(void *param){
   while(1){
+    xSemaphoreTake( xMutex,portMAX_DELAY);
     if(ctpowerCount % 161 == 0){
       PowFleePerHr = powerFlee + airFlee + CTPowerFlee;
       PowFleePerHr_Temp += PowFleePerHr;
+      PowFleeHrCount++;
     }
+    if(PowFleeHrCount% 24 == 0){
+      PowFleePerDay = PowFleePerHr_Temp;
+    }
+    xSemaphoreGive( xMutex ); //release key(xMutex)
     vTaskDelay(pdMS_TO_TICKS(CheckDelay));
   }
 }
@@ -265,6 +282,13 @@ server.on("/PowerFleePerHr", HTTP_GET, [](AsyncWebServerRequest* request) {
   request->send(200, "text/plain", PFleePerHr);
 });
 
+server.on("/PowerFleePerDay", HTTP_GET, [](AsyncWebServerRequest* request) {
+  Serial.println("ESP32 Web Server: New request received:");  // for debugging
+  Serial.println("GET /PowerFleePerHr");                         // for debugging
+  String PFleePerDay = String(PowFleePerDay, 4);
+  request->send(200, "text/plain", PFleePerDay);
+});
+
 server.on("/airSlider", HTTP_GET, [] (AsyncWebServerRequest *request) {
     String AirInputMessage;
     // GET input1 value on <ESP_IP>/slider?value=<inputMessage>
@@ -296,10 +320,12 @@ server.on("/airSlider", HTTP_GET, [] (AsyncWebServerRequest *request) {
 // Start the server
 server.begin();
 
+xMutex = xSemaphoreCreateMutex();
+
 xTaskCreate(lightTask, "lightTask", 2048, NULL, LtaskPrio, NULL); 
 xTaskCreate(TempTask, "TempTask", 4096, NULL, TtaskPrio, NULL);
 xTaskCreate(Power, "Power", 8192, NULL, TtaskPrio, NULL);
-xTaskCreate(PowPerHr, "PowPerHr", 2048, NULL, LtaskPrio, NULL);
+xTaskCreate(PowSum, "PowSum", 4096, NULL, LtaskPrio, NULL);
 
 }
 

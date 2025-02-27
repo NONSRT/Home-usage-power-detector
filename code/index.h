@@ -5,8 +5,26 @@ const char* webpage = R"=====(
 <!DOCTYPE html>
 <html>
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
     <title>ESP32 Power Detector</title>
     <style>
+    html, body {
+        height: 100%;
+    }
+
+    html {
+        display: table;
+        margin: auto;
+    }
+
+    body {
+        display: table-cell;
+        vertical-align: center;
+    }
+
+    h1 {text-align: center;}
+
     .switch {
         position: relative;
         display: inline-block;
@@ -69,8 +87,11 @@ const char* webpage = R"=====(
     </style>
 </head>
 <body>
-    <h1>ESP32</h1>
-    <h2>Your room is now <span style="color: red;"><span id="light">Loading...</span></span></h2>
+    <h1>Home power usage monitor</h1>
+    <i class="fa fa-lightbulb-o" style="font-size:48px; color:#ffca04;"></i>
+    <h2>
+        Your room is now <span style="color: red;"><span id="light">Loading...</span></span>
+    </h2>
     <h2>
         Light switch is turn <span style="color: red;"><span id="LightSwitchStatus">Loading...</span></span>
         <label class="switch">
@@ -81,7 +102,8 @@ const char* webpage = R"=====(
     <h2>
         Current Power Flee: <span style="color: red;"><span id="lightFlee">Loading...</span></span>THB
     </h2>
-
+    <br>
+    <i class="fa fa-thermometer-half" style="font-size:48px; color:#059e8a;"></i>
     <h2>
         Temperature: <span style="color: red;"><span id="temperature">Loading...</span>&deg</span> 
         Heat Index: <span style="color: red;"><span id="heatIndex">Loading...</span>&deg</span>
@@ -97,10 +119,12 @@ const char* webpage = R"=====(
     <h2>
         Air Flee: <span style="color: red;"><span id="airFlee">Loading...</span></span>THB
     </h2>
-
+    <br>
+    <i class="fa fa-flash" style="font-size:48px;color:#00F0FF;"></i>
     <h2>Power usage Flee: <span style="color: red;"><span id="CTPowerFlee">Loading...</span></span>THB</h2>
 
     <h2>Power Flee/Hour: <span style="color: red;"><span id="PowerFleePerHr">Loading...</span></span>THB</h2>
+    <h2>Power Flee/Day: <span style="color: red;"><span id="PowerFleePerDay">Loading...</span></span>THB</h2>
 
     <script>
         function lightMonitor() {
@@ -124,7 +148,7 @@ const char* webpage = R"=====(
         }
 
         lightMonitor();
-        setInterval(lightMonitor, 22600); // Update temperature every 4 seconds
+        setInterval(lightMonitor, 22600); // Update temperature every 22.6 seconds
 
         function LightSwitch() {
             var LightCheckBox = document.getElementById("LightSwitchCheck");
@@ -176,7 +200,7 @@ const char* webpage = R"=====(
         }
 
         temperature();
-        setInterval(temperature, 22600); // Update temperature every 4 seconds
+        setInterval(temperature, 22600); // Update temperature every 22.6 seconds
 
         function AirconSwitch() {
             var AirCheckBox = document.getElementById("AirSwitchCheck");
@@ -204,18 +228,24 @@ const char* webpage = R"=====(
         }
 
         CTPower();
-        setInterval(CTPower, 22600); // Update temperature every 4 seconds
+        setInterval(CTPower, 22600); // Update temperature every 22.6 seconds
 
-        function PowFleePerHr() {
+        function PowFleePer() {
             fetch("/PowerFleePerHr")
                 .then(response => response.text())
                 .then(data => {
                     document.getElementById("PowerFleePerHr").textContent = data;
                 });
+
+            fetch("/PowerFleePerDay")
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById("PowerFleePerDay").textContent = data;
+                });
         }
 
-        PowFleePerHr();
-        setInterval(PowFleePerHr, 22600); // Update temperature every 4 seconds
+        PowFleePer();
+        setInterval(PowFleePer, 22600); // Update temperature every 22.6 seconds
     </script>
 </body>
 </html>
