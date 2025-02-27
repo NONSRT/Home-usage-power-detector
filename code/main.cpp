@@ -9,19 +9,15 @@
 #define DHTPIN 16 // Digital pin connected to the DHT sensor
 #define DHTTYPE DHT22 // DHT 22 (AM2302), AM2321
 DHT dht(DHTPIN, DHTTYPE);
-int analogPin = 34, light = 0, lightTemp;
+int analogPin = 34, light = 0;
 SemaphoreHandle_t xMutex;
 
-int state = 0;
-
-int LtaskPrio = 1, TtaskPrio = 1, lightCount = 0, airCount = 0, ctpowerCount = 0, PowFleeHrCount = 0;
+int lightCount = 0, airCount = 0, ctpowerCount = 0, PowFleeHrCount = 0;
 float lightUnit, powerFlee, lightPower = 46, CheckDelay = 22500;
-float airUnit, usageUnit, airFlee, airPower = 782.81;
+float h, t, hic, airUnit, usageUnit, airFlee, airPower = 782.81;
 float CTPower, CTPowerUnit, CTPowerFlee;
 float PowFleePerHr, PowFleePerHr_Temp, PowFleePerDay;
 String lightStatus, heatStatus;
-
-float h, t, hic;
 
 EnergyMonitor emon1;
 EnergyMonitor emon2;
@@ -31,12 +27,12 @@ String lightSliderValue = "OFF";
 
 const char* PARAM_INPUT = "value";
 
-const char* WIFI_NAME = "Homewifi_2.4G";
-const char* WIFI_PASSWORD = "No0955653261";
+const char* WIFI_NAME = "WIFI_NAME";
+const char* WIFI_PASSWORD = "WIFI_PASSWORD";
 AsyncWebServer server(80);
 
 float UnitCalculate(float power){
-  usageUnit = power*(CheckDelay/3600000)/1000;
+  usageUnit = power*(CheckDelay/3600000)/1000; //22.5 sec/1hr
   return usageUnit;
 }
 
@@ -54,7 +50,7 @@ void lightTask(void *param){
       lightStatus = "Dark! turn on the light?";
       Serial.println(lightStatus);
     }
-
+    //light turn on
     if(lightSliderValue == "ON"){
       Serial.printf("\n\t\tlight is %s", lightSliderValue);
       if(lightCount > 0){
@@ -65,6 +61,7 @@ void lightTask(void *param){
       Serial.printf("%.4f\n",powerFlee);
       lightCount++;
     }
+    //light turn off
     else if(lightSliderValue == "OFF"){
       Serial.printf("\n\t\tlight is %s\n", lightSliderValue);
       lightCount = 0;
@@ -119,6 +116,7 @@ void TempTask(void *param){
       Serial.println(heatStatus);
     }
 
+    //Aircon turn on
     if(airSliderValue == "ON"){
       Serial.printf("\n\t\tair is %s", airSliderValue);
       if(airCount > 0){
@@ -129,6 +127,7 @@ void TempTask(void *param){
       Serial.printf("AF:%.4f\n",airFlee);
       airCount++;
     }
+    //Aircon turn off
     else if(airSliderValue == "OFF"){
       Serial.printf("\n\t\tair is %s\n", airSliderValue);
       airCount = 0;
@@ -143,11 +142,13 @@ void TempTask(void *param){
 void Power(void *parameter){
   while(1){
     xSemaphoreTake( xMutex,portMAX_DELAY);
+    //CT sensor from PC
     double Irms = emon1.calcIrms(1480);  // Calculate Irms only
     Serial.print(Irms*230.0);	       // Apparent power
     Serial.print(" ");
     Serial.println(Irms);		       // Irms
 
+    //CT sensor from repeater
     double Irmss = emon2.calcIrms(1480);  // Calculate Irms only
     Serial.print(Irmss*230.0);	       // Apparent power
     Serial.print(" ");
@@ -172,11 +173,13 @@ void Power(void *parameter){
 void PowSum(void *param){
   while(1){
     xSemaphoreTake( xMutex,portMAX_DELAY);
+    //Power flee / Hour
     if(ctpowerCount % 161 == 0){
       PowFleePerHr = powerFlee + airFlee + CTPowerFlee;
       PowFleePerHr_Temp += PowFleePerHr;
       PowFleeHrCount++;
     }
+    //Power flee / Day
     if(PowFleeHrCount% 24 == 0){
       PowFleePerDay = PowFleePerHr_Temp;
     }
@@ -187,10 +190,10 @@ void PowSum(void *param){
 
 void setup(){
 Serial.begin(9600);
-pinMode(analogPin, INPUT);
-emon1.current(35, 111.1);
-emon2.current(39, 111.1);
-dht.begin();
+pinMode(analogPin, INPUT); //light sensor setup
+emon1.current(35, 111.1); //CT sensor from PC
+emon2.current(39, 111.1); //CT sensor from repeater
+dht.begin(); //start detect temperature
 
 // Connect to Wi-Fi
 WiFi.begin(WIFI_NAME, WIFI_PASSWORD);
@@ -211,7 +214,7 @@ server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
 
   request->send(200, "text/html", webpage);
 });
-
+//-------------------------------------------------------------------------------------
 // Define a route to get the light data
 server.on("/light", HTTP_GET, [](AsyncWebServerRequest* request) {
   Serial.println("ESP32 Web Server: New request received:");  // for debugging
@@ -231,7 +234,8 @@ server.on("/lightFlee", HTTP_GET, [](AsyncWebServerRequest* request) {
   String lightFlee = String(powerFlee, 4);
   request->send(200, "text/plain", lightFlee);
 });
-
+//-------------------------------------------------------------------------------------
+// Define a route to get the Temperature data
 server.on("/temperature", HTTP_GET, [](AsyncWebServerRequest* request) {
   Serial.println("ESP32 Web Server: New request received:");  // for debugging
   Serial.println("GET /temperature");                         // for debugging
@@ -266,7 +270,8 @@ server.on("/airFlee", HTTP_GET, [](AsyncWebServerRequest* request) {
   String AirFlee = String(af, 4);
   request->send(200, "text/plain", AirFlee);
 });
-
+//-------------------------------------------------------------------------------------
+// Define a route to get the Current power data
 server.on("/CTPowerFlee", HTTP_GET, [](AsyncWebServerRequest* request) {
   Serial.println("ESP32 Web Server: New request received:");  // for debugging
   Serial.println("GET /CTPowerFlee");                         // for debugging
@@ -274,7 +279,8 @@ server.on("/CTPowerFlee", HTTP_GET, [](AsyncWebServerRequest* request) {
   String CTPFlee = String(CTPF, 4);
   request->send(200, "text/plain", CTPFlee);
 });
-
+//-------------------------------------------------------------------------------------
+//// Define a route to get the sum of power flee data
 server.on("/PowerFleePerHr", HTTP_GET, [](AsyncWebServerRequest* request) {
   Serial.println("ESP32 Web Server: New request received:");  // for debugging
   Serial.println("GET /PowerFleePerHr");                         // for debugging
@@ -288,7 +294,8 @@ server.on("/PowerFleePerDay", HTTP_GET, [](AsyncWebServerRequest* request) {
   String PFleePerDay = String(PowFleePerDay, 4);
   request->send(200, "text/plain", PFleePerDay);
 });
-
+//-------------------------------------------------------------------------------------
+//get value from Aircon switch
 server.on("/airSlider", HTTP_GET, [] (AsyncWebServerRequest *request) {
     String AirInputMessage;
     // GET input1 value on <ESP_IP>/slider?value=<inputMessage>
@@ -302,7 +309,8 @@ server.on("/airSlider", HTTP_GET, [] (AsyncWebServerRequest *request) {
     Serial.println(AirInputMessage);
     request->send(200, "text/plain", "OK");
   });
-
+//-------------------------------------------------------------------------------------
+  //get value from Light switch
   server.on("/lightSlider", HTTP_GET, [] (AsyncWebServerRequest *request) {
     String LightInputMessage;
     // GET input1 value on <ESP_IP>/slider?value=<inputMessage>
@@ -320,12 +328,13 @@ server.on("/airSlider", HTTP_GET, [] (AsyncWebServerRequest *request) {
 // Start the server
 server.begin();
 
-xMutex = xSemaphoreCreateMutex();
+xMutex = xSemaphoreCreateMutex(); //craete Mutex key to control task memory usage
 
-xTaskCreate(lightTask, "lightTask", 2048, NULL, LtaskPrio, NULL); 
-xTaskCreate(TempTask, "TempTask", 4096, NULL, TtaskPrio, NULL);
-xTaskCreate(Power, "Power", 8192, NULL, TtaskPrio, NULL);
-xTaskCreate(PowSum, "PowSum", 4096, NULL, LtaskPrio, NULL);
+//create task
+xTaskCreate(lightTask, "lightTask", 2048, NULL, 1, NULL); 
+xTaskCreate(TempTask, "TempTask", 4096, NULL, 1, NULL);
+xTaskCreate(Power, "Power", 8192, NULL, 1, NULL);
+xTaskCreate(PowSum, "PowSum", 4096, NULL, 1, NULL);
 
 }
 
